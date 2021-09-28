@@ -1,0 +1,10 @@
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+*/vscode/*
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+AccLog.txt
+save.p
+logs.txt
