@@ -110,9 +110,3 @@ class Actions:
         3: add_node,
         # 0: add_subgraph
     }
-
-
-if __name__ == "__main__":
-    # execute only if run as a script
-    trainset = MiniGCDataset(480, 10, 20)
-    testset = MiniGCDataset(120, 10, 20)

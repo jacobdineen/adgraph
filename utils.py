@@ -1,6 +1,6 @@
 import dgl
 from dgl.data import MiniGCDataset
-from graph_insertion import add_subgraph
+from action_space import add_subgraph
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np

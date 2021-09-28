@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 import math
-from graph_insertion import Actions as A
+from action_space import Actions as A
 
 if torch.cuda.is_available():
     device = "cuda:0"
