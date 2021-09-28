@@ -8,5 +8,6 @@ __pycache__/
 AccLog.txt
 save.p
 logs.txt
-/images
-/.vscode
+
+images/
+.vscode/
