@@ -1,9 +1,5 @@
 # Code for Graph Classification, to be called in policy gradient to return validation loss
 # This is a test.123
-from dgl.data import MiniGCDataset
-import matplotlib.pyplot as plt
-import networkx as nx
-import dgl
 
 import torch
 import torch.optim as optim
@@ -12,30 +8,18 @@ import torch.nn.functional as F
 from torch.cuda.amp.grad_scaler import GradScaler
 
 from torch.utils.data import DataLoader
+from dgl import mean_nodes, batch
 from dgl.nn.pytorch import GraphConv
 from copy import deepcopy
+from utils.utils import collate
+import config
 
+torch.autograd.set_detect_anomaly(False)
+torch.autograd.profiler.profile(False)
+torch.autograd.profiler.emit_nvtx(False)
 
 # fetch cpu, gpu if available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-
-def collate(samples):
-    """Collate init dataset
-
-    Parameters
-    ----------
-    samples : tuple
-        list of (graph,label) pairs given a dataset
-
-    Returns
-    -------
-    tuple
-        form a mini-batch from a given list of graph and label pairs
-    """
-    graphs, labels = map(list, zip(*samples))
-    batched_graph = dgl.batch(graphs)
-    return batched_graph, torch.Tensor(labels)
 
 
 class Classifier(nn.Module):
@@ -92,7 +76,7 @@ class Classifier(nn.Module):
         h = F.relu(self.conv2(g.to(device), h.to(device)))
         g.ndata["h"] = h
         # Calculate graph representation by averaging all the node representations.
-        hg = dgl.mean_nodes(g, "h")
+        hg = mean_nodes(g, "h")
         if intermediate:
             return hg
         else:
@@ -117,7 +101,14 @@ def train(trainset, epochs: int, model=None):
         torch trained model, epoch losses associated with training
     """
     # instantiate data loader object
-    data_loader = DataLoader(trainset, batch_size=32, shuffle=True, collate_fn=collate)
+    data_loader = DataLoader(
+        trainset,
+        batch_size=config.gcn_batch_size,
+        shuffle=True,
+        collate_fn=collate,
+        num_workers=config.gcn_workers,  # should offer speedup
+        pin_memory=True,  # should offer speedup
+    )
     # if there is no model passed in, train as usual else pass model in
     if model is None:
         # instantiate GNN model
@@ -125,7 +116,7 @@ def train(trainset, epochs: int, model=None):
     # instantiate loss function
     loss_func = nn.CrossEntropyLoss()
     # instantiate optimizer
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    optimizer = optim.Adam(model.parameters(), lr=config.gcn_learning_rate)
     model.train()  # train mode - learnable params
     epoch_losses = []  # logs of epoch losses
     scaler = GradScaler()
@@ -165,7 +156,7 @@ def test(testset, model):
             sum(y = y_hat) / len(y)
     """
     test_X, test_Y = map(list, zip(*testset))  # split testset into x,y pairs
-    test_bg = dgl.batch(test_X)  # get batch of training instances (X)
+    test_bg = batch(test_X)  # get batch of testing instances (X)
     test_Y = torch.tensor(test_Y).float().view(-1, 1).to(device)  # get test labels
     model_Y = model(test_bg)  # run batch X through model
     probs_Y = torch.softmax(model_Y, 1)  # softmax model outputs from probas
@@ -221,15 +212,9 @@ def poison_test(model, trainset, testset):
         predictions over test set
 
     """
-    model2, _ = train(trainset=trainset, epochs=1, model=deepcopy(model))
+    model2, _ = train(
+        trainset=trainset, epochs=config.gcn_additional_epochs, model=deepcopy(model)
+    )
     model2.eval()
     y = test(testset, model2)
     return y
-
-
-# if __name__ == "__main__":
-#     # execute only if run as a script
-#     trainset = MiniGCDataset(480, 10, 20)
-#     testset = MiniGCDataset(120, 10, 20)
-#     _, yes = runthrough(trainset, testset, 100)
-#     print(yes)

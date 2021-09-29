@@ -3,7 +3,7 @@ import config
 
 from graph_classifier import runthrough, poison_test
 from rl.policy_gradient import Policy, select_action, perform_action, graphs_to_state
-from data import get_dataset
+from utils.data import get_dataset
 
 import torch
 import torch.optim as optim

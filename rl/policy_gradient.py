@@ -2,12 +2,18 @@
 
 from graph_classifier import test
 import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 import math
-from action_space import Actions as A
+from rl.action_space import Actions as A
+
+
+torch.autograd.set_detect_anomaly(False)
+torch.autograd.profiler.profile(False)
+torch.autograd.profiler.emit_nvtx(False)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

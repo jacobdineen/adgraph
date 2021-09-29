@@ -2,6 +2,26 @@ from rl.action_space import add_subgraph
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
+import dgl
+from torch import Tensor
+
+
+def collate(samples):
+    """Collate init dataset
+
+    Parameters
+    ----------
+    samples : tuple
+        list of (graph,label) pairs given a dataset
+
+    Returns
+    -------
+    tuple
+        form a mini-batch from a given list of graph and label pairs
+    """
+    graphs, labels = map(list, zip(*samples))
+    batched_graph = dgl.batch(graphs)
+    return batched_graph, Tensor(labels)
 
 
 def perturb_and_visualize(x):
