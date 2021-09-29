@@ -1,46 +1,58 @@
-import dgl
 import numpy as np
 import config
 
 from graph_classifier import runthrough, poison_test
 from policy_gradient import Policy, select_action, perform_action, graphs_to_state
-from action_space import Actions as A
 from data import get_dataset
-from dgl.data import MiniGCDataset
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-from torch.distributions import Categorical
 
-import time
-from itertools import count
-import copy
 import pickle
+from action_space import Actions as A
+import logging
 
-if torch.cuda.is_available():
-    device = "cuda:0"
-else:
-    device = "cpu"
-device = torch.device(device)
+
+torch.autograd.set_detect_anomaly(False)
+torch.autograd.profiler.profile(False)
+torch.autograd.profiler.emit_nvtx(False)
 
 # TODO
 
 
-def write_iter_logs(logging, run_num, i_episode, curr_acc, ep_reward):
-    print("RL/RUN/EP/ACC/Reward:", run_num, i_episode, curr_acc, ep_reward)
-    logging.write(
-        f"RL, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}" "\n"
+# def write_iter_logs(logging, run_num, i_episode, init_reward, curr_acc, ep_reward):
+#     if i_episode == config.num_epochs:
+#         print("Max Number of iterations reached. Terminating.")
+#         logging.close()
+#     print("RUN/EP/ACC/Reward:", run_num, i_episode, curr_acc, ep_reward)
+#     logging.write(
+#         f"RL, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}" "\n"
+#     )
+
+
+def set_policy(trainset, A):
+    # Instantiate RL Algorithm
+    # ------------------------
+    policy = Policy(
+        in_dim=len(graphs_to_state(trainset.graphs)),  # num graphs
+        hidden_dim=256,  # num hidden neurons
+        out_dim=len(trainset) * len(A.action_space),  # num possible actions
+        dropout=0.5,
     )
-    if i_episode == num_epochs:
-        print("Max Number of iterations reached. Terminating.")
-        logging.close()
-        break
+
+    optimizer = optim.Adam(policy.parameters(), lr=1e-3)
+    eps = np.finfo(np.float32).eps.item()
+    return policy, optimizer, eps
 
 
 def trn(
-    trainset, testset, num_epochs: int, graph_epochs: int, points: int, run_num: int
+    trainset,
+    testset,
+    num_epochs: int,
+    graph_epochs: int,
+    points: int,
+    run_num: int,
+    num_classes: int,
 ):
     """run poison attack and rl algo
 
@@ -63,32 +75,33 @@ def trn(
         [description]
     """
     # logging data
-    logging = open("data/logs.txt", "a")
-    action_hist = np.zeros([num_epochs, len(train) * 1])  # [[],[]]
-    # Perform a pass of training/testing given datasets
-    # return trained graph neural network & baseline testset accuracy
-    # serialize the original graphs to reset env at each episode
-    pickle.dump(trainset.graphs, open("data/save.p", "wb"))
+    # logging = open("data/logs.txt", "a")
+    pickle.dump(trainset.graphs, open("data/init_graphs.p", "wb"))
 
-    max_labels = trainset.labels
+    action_hist = {}
+
+    # max_labels = trainset.labels
     g_model, init_reward = runthrough(
         trainset=trainset, testset=testset, epochs=graph_epochs
     )
 
-    for i_episode in count(1):
+    policy, optimizer, eps = set_policy(trainset, A)
+
+    for i_episode in range(num_epochs):
         # after each attempt of poisoning via label, revert to original labels
         # unpickle original graph structure
-        trainset.graphs = pickle.load(open("data/save.p", "rb"))
-        state, ep_reward, rand_reward = graphs_to_state(trainset.graphs), 0, 0
+        trainset.graphs = pickle.load(open("data/init_graphs.p", "rb"))
+        state, ep_reward, _ = graphs_to_state(trainset.graphs), 0, 0
         # # For first poisoning point, reward is how much better ("worse") than baseline acc.
         prev_acc = init_reward
 
-        for t in range(1, points + 1):  # Assume 18 Poisoning points
+        episode_actions = []
+        for t in range(points):  # Assume 18 Poisoning points
             # fetch action | state
             action = select_action(state, policy)
-            action_hist[i_episode - 1][action] += 1
+            episode_actions.append(action)
             # move to s' given a in s
-            state, trainset, graph, action = perform_action(
+            state, trainset, _, action = perform_action(
                 trainset, action, state, num_classes
             )
 
@@ -102,31 +115,41 @@ def trn(
 
         # perform policy updates/optimization
         policy.finish_episode(optimizer, eps)
-        write_iter_logs(logging, run_num, i_episode, curr_acc, ep_reward)
+        logging.info(
+            f"rl, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}"
+        )
+        # write_iter_logs(logging, run_num, i_episode, init_reward, curr_acc, ep_reward)
     return action_hist
 
 
 def trn_random(
-    trainset, testset, num_epochs: int, graph_epochs: int, points: int, run_num: int
+    trainset,
+    testset,
+    num_epochs: int,
+    graph_epochs: int,
+    points: int,
+    run_num: int,
+    num_classes: int,
 ):
-    logging = open(config.logging_path, "a")
-    action_hist = np.zeros([num_epochs, len(train) * 1])  # [[],[]]
+    # logging = open(config.logging_path, "a")
     pickle.dump(trainset.graphs, open(config.data_save_path, "wb"))
 
-    max_labels = trainset.labels
+    action_hist = {}
+
     g_model, init_reward = runthrough(
         trainset=trainset, testset=testset, epochs=graph_epochs
     )
 
-    for i_episode in count(1):
+    for i_episode in range(num_epochs):
         trainset.graphs = pickle.load(open(config.data_save_path, "rb"))
-        state, ep_reward, rand_reward = graphs_to_state(trainset.graphs), 0, 0
+        state, ep_reward, _ = graphs_to_state(trainset.graphs), 0, 0
         prev_acc = init_reward
 
-        for t in range(1, points + 1):  # Assume 18 Poisoning points
-            action = np.random.choice(len(train))
-            action_hist[i_episode - 1][action] += 1
-            state, trainset, graph, action = perform_action(
+        episode_actions = []
+        for t in range(points):  # Assume 18 Poisoning points
+            action = np.random.choice(len(trainset))
+            episode_actions.append(action)
+            state, trainset, _, action = perform_action(
                 trainset, action, state, num_classes
             )
 
@@ -134,62 +157,45 @@ def trn_random(
 
             reward = prev_acc - curr_acc
             prev_acc = curr_acc
-            policy.rewards.append(reward)
             ep_reward += reward
+        action_hist[i_episode] = episode_actions
 
-        write_iter_logs(logging, run_num, i_episode, curr_acc, ep_reward)
+        logging.info(
+            f"rand, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}"
+        )
     return action_hist
 
 
 if __name__ == "__main__":
+    logging.basicConfig(filename="data/logging.log", level=logging.INFO)
     torch.manual_seed(42)
-    action_histories = []
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    for i in rangeconfig.(num_runs):
-        print(f"run: {i}/{num_runs}")
-        trainset = MiniGCDataset(
-            config.train_size, config.min_graph_nodes, config.max_graph_nodes
-        )
-        testset = MiniGCDataset(
-            config.test_size, config.min_graph_nodes, config.max_graph_nodes
-        )
-        num_classes = len(np.unique(trainset.labels))
-        # Instantiate RL Algorithm
-        # ------------------------
-        policy = Policy(
-            in_dim=len(graphs_to_state(trainset.graphs)),  # num graphs
-            hidden_dim=156,  # num hidden neurons
-            out_dim=len(trainset) * 1,  # num possible actions
-            dropout=0.6,
+    action_histories = {}  # nested dict
+
+    for i in range(config.num_runs):
+        logging.info(f"run: {i}/{config.num_runs}")
+        trainset, testset, num_classes = get_dataset(config)
+        logging.info("RANDOM")
+        action_histories["random"] = trn_random(
+            trainset=trainset,
+            testset=testset,
+            num_epochs=config.num_epochs,
+            graph_epochs=config.num_graph_epochs,
+            points=config.poison_points,
+            run_num=i,
+            num_classes=num_classes,
         )
 
-        optimizer = optim.Adam(policy.parameters(), lr=1e-3)
-        eps = np.finfo(np.float32).eps.item()
-
-        # ------------------------
-        # Run Poison Attack
-        # ------------------------
-
-        action_histories.append(
-            trn_random(
-                train=trainset,
-                test=testset,
-                num_epochs=config.num_epochs,
-                graph_epochs=config.num_graph_epochs,
-                points=config.poison_points,
-                run_num=i,
-            )
-        )
-
-        action_histories.append(
-            trn(
-                train=trainset,
-                test=testset,
-                num_epochs=config.num_epochs,
-                graph_epochs=config.num_graph_epochs,
-                points=config.poison_points,
-                run_num=i,
-            )
+        logging.info("RL")
+        action_histories["policy"] = trn(
+            trainset=trainset,
+            testset=testset,
+            num_epochs=config.num_epochs,
+            graph_epochs=config.num_graph_epochs,
+            points=config.poison_points,
+            run_num=i,
+            num_classes=num_classes,
         )
 
     with open(config.action_hist_path, "wb") as f:

@@ -4,20 +4,20 @@ from dgl.data import MiniGCDataset
 import matplotlib.pyplot as plt
 import networkx as nx
 import dgl
+
 import torch
 import torch.optim as optim
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.cuda.amp.grad_scaler import GradScaler
+
 from torch.utils.data import DataLoader
 from dgl.nn.pytorch import GraphConv
 from copy import deepcopy
-import torch.nn as nn
-import torch.nn.functional as F
+
 
 # fetch cpu, gpu if available
-if torch.cuda.is_available():
-    device = "cuda:0"
-else:
-    device = "cpu"
-device = torch.device(device)
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def collate(samples):
@@ -125,9 +125,10 @@ def train(trainset, epochs: int, model=None):
     # instantiate loss function
     loss_func = nn.CrossEntropyLoss()
     # instantiate optimizer
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
     model.train()  # train mode - learnable params
     epoch_losses = []  # logs of epoch losses
+    scaler = GradScaler()
     # Begin Batch Training
     for epoch in range(epochs):
         epoch_loss = 0
@@ -136,9 +137,11 @@ def train(trainset, epochs: int, model=None):
             loss = loss_func(
                 prediction.to(device), label.type(torch.LongTensor).to(device)
             )  # compute loss
-            optimizer.zero_grad()  # zero out gradient
-            loss.backward()  # backward pass
-            optimizer.step()  # perform weight updates
+            for param in model.parameters():
+                param.grad = None
+            scaler.scale(loss).backward()  # backward pass
+            scaler.step(optimizer)  # perform weight updates
+            scaler.update()
             epoch_loss += loss.detach().item()  # compute epoch loss
         epoch_loss /= iter + 1
         epoch_losses.append(epoch_loss)

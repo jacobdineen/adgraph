@@ -1,7 +1,5 @@
 import dgl
-from dgl.data import MiniGCDataset
 import networkx as nx
-import numpy as np
 import random
 
 

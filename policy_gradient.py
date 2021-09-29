@@ -1,5 +1,6 @@
 # Based on https://github.com/pytorch/examples/blob/master/reinforcement_learning/reinforce.py
 
+from graph_classifier import test
 import numpy as np
 import torch
 import torch.nn as nn
@@ -8,11 +9,7 @@ from torch.distributions import Categorical
 import math
 from action_space import Actions as A
 
-if torch.cuda.is_available():
-    device = "cuda:0"
-else:
-    device = "cpu"
-device = torch.device(device)
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class Policy(nn.Module):
@@ -61,10 +58,6 @@ class Policy(nn.Module):
         x = self.dropout(x)
         x = F.relu(x)
         action_scores = self.affine2(x)
-        # print(x)
-        # print(torch.isfinite(action_scores))
-        # print(action_scores)
-        # print(F.softmax(action_scores, dim=1))
         return F.softmax(action_scores, dim=0)
 
     def finish_episode(self, optimizer, eps):
@@ -79,7 +72,8 @@ class Policy(nn.Module):
         returns = (returns - returns.mean()) / (returns.std() + eps)
         for log_prob, R in zip(self.saved_log_probs, returns):
             policy_loss.append(-log_prob * R)
-        optimizer.zero_grad()
+        for param in self.parameters():
+            param.grad = None
         policy_loss = torch.cat(policy_loss).to(device).sum()
         policy_loss.backward()
         optimizer.step()
