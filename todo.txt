@@ -1,0 +1,15 @@
+TODO
+
+- Rewrite plot_samples method to generate a figure that amalgamates all four datasets
+    Insert that as Figure 2 in paper and caption
+
+- finish rewrite to make sure everything is working on cuda device rather than cpu
+
+- Rewrite config file/whatever else to loop through datasets and log the dataset num_classes
+
+- write different benchmark metrics and define them in the paper, or just stick with random
+
+- analyze results
+
+- write conclusion
+

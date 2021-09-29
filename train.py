@@ -2,14 +2,14 @@ import numpy as np
 import config
 
 from graph_classifier import runthrough, poison_test
-from policy_gradient import Policy, select_action, perform_action, graphs_to_state
+from rl.policy_gradient import Policy, select_action, perform_action, graphs_to_state
 from data import get_dataset
 
 import torch
 import torch.optim as optim
 
 import pickle
-from action_space import Actions as A
+from rl.action_space import Actions as A
 import logging
 
 
