@@ -13,21 +13,11 @@ from rl.action_space import Actions as A
 import logging
 
 
-torch.autograd.set_detect_anomaly(False)
-torch.autograd.profiler.profile(False)
-torch.autograd.profiler.emit_nvtx(False)
+# torch.autograd.set_detect_anomaly(False)
+# torch.autograd.profiler.profile(False)
+# torch.autograd.profiler.emit_nvtx(False)
 
 # TODO
-
-
-# def write_iter_logs(logging, run_num, i_episode, init_reward, curr_acc, ep_reward):
-#     if i_episode == config.num_epochs:
-#         print("Max Number of iterations reached. Terminating.")
-#         logging.close()
-#     print("RUN/EP/ACC/Reward:", run_num, i_episode, curr_acc, ep_reward)
-#     logging.write(
-#         f"RL, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}" "\n"
-#     )
 
 
 def set_policy(trainset, A):
@@ -134,12 +124,11 @@ def trn_random(
     # logging = open(config.logging_path, "a")
     pickle.dump(trainset.graphs, open(config.data_save_path, "wb"))
 
-    action_hist = {}
-
     g_model, init_reward = runthrough(
-        trainset=trainset, testset=testset, epochs=graph_epochs
+        trainset=trainset, testset=testset, epochs=config.num_graph_epochs
     )
 
+    action_hist = {}
     for i_episode in range(num_epochs):
         trainset.graphs = pickle.load(open(config.data_save_path, "rb"))
         state, ep_reward, _ = graphs_to_state(trainset.graphs), 0, 0
@@ -167,13 +156,14 @@ def trn_random(
 
 
 if __name__ == "__main__":
+    print("here")
     logging.basicConfig(filename="data/logging.log", level=logging.INFO)
     torch.manual_seed(42)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
+    print("here")
     action_histories = {}  # nested dict
-
     for i in range(config.num_runs):
+        print("here")
         logging.info(f"run: {i}/{config.num_runs}")
         trainset, testset, num_classes = get_dataset(config)
         logging.info("RANDOM")

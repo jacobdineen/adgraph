@@ -1,30 +1,38 @@
-# Code for Graph Classification, to be called in policy gradient to return validation loss
-# This is a test.123
-
+from dgl.data import MiniGCDataset
+import matplotlib.pyplot as plt
+import networkx as nx
+import dgl
 import torch
 import torch.optim as optim
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.cuda.amp.grad_scaler import GradScaler
-
 from torch.utils.data import DataLoader
-from dgl import mean_nodes, batch
 from dgl.nn.pytorch import GraphConv
 from copy import deepcopy
-from utils.utils import collate
+import torch.nn as nn
+import torch.nn.functional as F
 import config
-
-torch.autograd.set_detect_anomaly(False)
-torch.autograd.profiler.profile(False)
-torch.autograd.profiler.emit_nvtx(False)
 
 # fetch cpu, gpu if available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
+def collate(samples):
+    """Collate init dataset
+    Parameters
+    ----------
+    samples : tuple
+        list of (graph,label) pairs given a dataset
+    Returns
+    -------
+    tuple
+        form a mini-batch from a given list of graph and label pairs
+    """
+    graphs, labels = map(list, zip(*samples))
+    batched_graph = dgl.batch(graphs)
+    return batched_graph, torch.Tensor(labels)
+
+
 class Classifier(nn.Module):
     """Graph Classification Classifier
-
     Parameters
     ----------
     in_dim : int
@@ -56,12 +64,10 @@ class Classifier(nn.Module):
             3) h <- Activation(conv2(h))
             4) hg <- Average over node representations
             5) y_hat <- Linear(hg)
-
         Parameters
         ----------
         g : graph
             dgl batch of graphs,label from dataloader
-
         Returns
         -------
         tensor
@@ -76,7 +82,7 @@ class Classifier(nn.Module):
         h = F.relu(self.conv2(g.to(device), h.to(device)))
         g.ndata["h"] = h
         # Calculate graph representation by averaging all the node representations.
-        hg = mean_nodes(g, "h")
+        hg = dgl.mean_nodes(g, "h")
         if intermediate:
             return hg
         else:
@@ -85,7 +91,6 @@ class Classifier(nn.Module):
 
 def train(trainset, epochs: int, model=None):
     """Train GNN on specified trainset
-
     Parameters
     ----------
     trainset : dataset object
@@ -94,7 +99,6 @@ def train(trainset, epochs: int, model=None):
         number of iterations to train model for
     model : model object
         pretrained torch model
-
     Returns
     -------
     model object, list
@@ -106,20 +110,22 @@ def train(trainset, epochs: int, model=None):
         batch_size=config.gcn_batch_size,
         shuffle=True,
         collate_fn=collate,
-        num_workers=config.gcn_workers,  # should offer speedup
-        pin_memory=True,  # should offer speedup
+        pin_memory=True,
     )
     # if there is no model passed in, train as usual else pass model in
     if model is None:
         # instantiate GNN model
-        model = Classifier(in_dim=1, hidden_dim=256, n_classes=trainset.num_classes)
+        model = Classifier(
+            in_dim=config.gcn_in_dim,
+            hidden_dim=config.gcn_hidden,
+            n_classes=trainset.num_classes,
+        )
     # instantiate loss function
     loss_func = nn.CrossEntropyLoss()
     # instantiate optimizer
     optimizer = optim.Adam(model.parameters(), lr=config.gcn_learning_rate)
     model.train()  # train mode - learnable params
     epoch_losses = []  # logs of epoch losses
-    scaler = GradScaler()
     # Begin Batch Training
     for epoch in range(epochs):
         epoch_loss = 0
@@ -128,11 +134,9 @@ def train(trainset, epochs: int, model=None):
             loss = loss_func(
                 prediction.to(device), label.type(torch.LongTensor).to(device)
             )  # compute loss
-            for param in model.parameters():
-                param.grad = None
-            scaler.scale(loss).backward()  # backward pass
-            scaler.step(optimizer)  # perform weight updates
-            scaler.update()
+            optimizer.zero_grad()  # zero out gradient
+            loss.backward()  # backward pass
+            optimizer.step()  # perform weight updates
             epoch_loss += loss.detach().item()  # compute epoch loss
         epoch_loss /= iter + 1
         epoch_losses.append(epoch_loss)
@@ -141,14 +145,12 @@ def train(trainset, epochs: int, model=None):
 
 def test(testset, model):
     """return test accuracy given trained model
-
     Parameters
     ----------
     testset : dataset object
         test set consisting of graph, label pairs
     model : model object
         trained torch model | trainset
-
     Returns
     -------
     float
@@ -156,7 +158,7 @@ def test(testset, model):
             sum(y = y_hat) / len(y)
     """
     test_X, test_Y = map(list, zip(*testset))  # split testset into x,y pairs
-    test_bg = batch(test_X)  # get batch of testing instances (X)
+    test_bg = dgl.batch(test_X)  # get batch of training instances (X)
     test_Y = torch.tensor(test_Y).float().view(-1, 1).to(device)  # get test labels
     model_Y = model(test_bg)  # run batch X through model
     probs_Y = torch.softmax(model_Y, 1)  # softmax model outputs from probas
@@ -169,7 +171,6 @@ def test(testset, model):
 
 def runthrough(trainset, testset, epochs: int):
     """Perform a pass of training/testing given datasets
-
     Parameters
     ----------
     trainset : dataset class
@@ -178,7 +179,6 @@ def runthrough(trainset, testset, epochs: int):
         training data consisting of graph, label pairs
     epochs : int
         number of iterations to train model for
-
     Returns
     -------
     model, y
@@ -196,7 +196,6 @@ def runthrough(trainset, testset, epochs: int):
 def poison_test(model, trainset, testset):
     """Retrain Model for single additional epoch with
        poisoned/perturbed data
-
     Parameters
     ----------
     model : model object
@@ -205,16 +204,12 @@ def poison_test(model, trainset, testset):
         train portion of dataset
     testset : dataset object
         test portion of dataset
-
     Returns
     -------
     tensor
         predictions over test set
-
     """
-    model2, _ = train(
-        trainset=trainset, epochs=config.gcn_additional_epochs, model=deepcopy(model)
-    )
+    model2, _ = train(trainset=trainset, epochs=1, model=deepcopy(model))
     model2.eval()
     y = test(testset, model2)
     return y

@@ -7,13 +7,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
-import math
+from math import floor
 from rl.action_space import Actions as A
 
 
-torch.autograd.set_detect_anomaly(False)
-torch.autograd.profiler.profile(False)
-torch.autograd.profiler.emit_nvtx(False)
+# torch.autograd.set_detect_anomaly(False)
+# torch.autograd.profiler.profile(False)
+# torch.autograd.profiler.emit_nvtx(False)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -81,6 +81,7 @@ class Policy(nn.Module):
         for param in self.parameters():
             param.grad = None
         policy_loss = torch.cat(policy_loss).to(device).sum()
+        optimizer.zero_grad()  # zero out gradient
         policy_loss.backward()
         optimizer.step()
         del self.rewards[:]
@@ -153,7 +154,7 @@ def perform_action(trainset, action, state, num_classes):
     """
     action_size = len(A.action_space)
     # a is the graph label index to change
-    a = math.floor(action / action_size)
+    a = floor(action / action_size)
     # b is the class index to change to
     b = action % action_size
 
