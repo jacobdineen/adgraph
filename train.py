@@ -4,6 +4,7 @@ import config
 from graph_classifier import runthrough, poison_test
 from rl.policy_gradient import Policy, select_action, perform_action, graphs_to_state
 from utils.data import get_dataset
+from utils.utils import save_obj
 
 import torch
 import torch.optim as optim
@@ -12,17 +13,18 @@ import pickle
 from rl.action_space import Actions as A
 import logging
 
+# from collections import defaultdict
+# import nested_dict as nd
 
-# torch.autograd.set_detect_anomaly(False)
-# torch.autograd.profiler.profile(False)
-# torch.autograd.profiler.emit_nvtx(False)
+
+torch.autograd.set_detect_anomaly(False)
+torch.autograd.profiler.profile(False)
+torch.autograd.profiler.emit_nvtx(False)
 
 # TODO
 
 
 def set_policy(trainset, A):
-    # Instantiate RL Algorithm
-    # ------------------------
     policy = Policy(
         in_dim=len(graphs_to_state(trainset.graphs)),  # num graphs
         hidden_dim=256,  # num hidden neurons
@@ -30,19 +32,18 @@ def set_policy(trainset, A):
         dropout=0.5,
     )
 
-    optimizer = optim.Adam(policy.parameters(), lr=1e-3)
-    eps = np.finfo(np.float32).eps.item()
-    return policy, optimizer, eps
+    optimizer = optim.Adam(policy.parameters(), lr=config.rl_learning_rate)
+    return policy, optimizer, config.eps
 
 
 def trn(
     trainset,
     testset,
     num_epochs: int,
-    graph_epochs: int,
     points: int,
     run_num: int,
     num_classes: int,
+    dataset: str,
 ):
     """run poison attack and rl algo
 
@@ -54,8 +55,6 @@ def trn(
         unperturbed testset
     num_epochs : int
         number of iterations to run
-    graph_epochs : int
-        number of iterations to train graph neural net
     points : int
         number of poison points
 
@@ -68,11 +67,9 @@ def trn(
     # logging = open("data/logs.txt", "a")
     pickle.dump(trainset.graphs, open("data/init_graphs.p", "wb"))
 
-    action_hist = {}
-
     # max_labels = trainset.labels
     g_model, init_reward = runthrough(
-        trainset=trainset, testset=testset, epochs=graph_epochs
+        trainset=trainset, testset=testset, epochs=config.num_graph_epochs
     )
 
     policy, optimizer, eps = set_policy(trainset, A)
@@ -106,20 +103,18 @@ def trn(
         # perform policy updates/optimization
         policy.finish_episode(optimizer, eps)
         logging.info(
-            f"rl, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}"
+            f"rl, {dataset}, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}, {episode_actions}"
         )
-        # write_iter_logs(logging, run_num, i_episode, init_reward, curr_acc, ep_reward)
-    return action_hist
 
 
 def trn_random(
     trainset,
     testset,
     num_epochs: int,
-    graph_epochs: int,
     points: int,
     run_num: int,
     num_classes: int,
+    dataset: str,
 ):
     # logging = open(config.logging_path, "a")
     pickle.dump(trainset.graphs, open(config.data_save_path, "wb"))
@@ -128,7 +123,6 @@ def trn_random(
         trainset=trainset, testset=testset, epochs=config.num_graph_epochs
     )
 
-    action_hist = {}
     for i_episode in range(num_epochs):
         trainset.graphs = pickle.load(open(config.data_save_path, "rb"))
         state, ep_reward, _ = graphs_to_state(trainset.graphs), 0, 0
@@ -136,7 +130,7 @@ def trn_random(
 
         episode_actions = []
         for t in range(points):  # Assume 18 Poisoning points
-            action = np.random.choice(len(trainset))
+            action = np.random.choice(len(trainset) * len(A.action_space))
             episode_actions.append(action)
             state, trainset, _, action = perform_action(
                 trainset, action, state, num_classes
@@ -147,46 +141,41 @@ def trn_random(
             reward = prev_acc - curr_acc
             prev_acc = curr_acc
             ep_reward += reward
-        action_hist[i_episode] = episode_actions
 
         logging.info(
-            f"rand, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}"
+            f"rand, {dataset}, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}, {episode_actions}"
         )
-    return action_hist
 
 
 if __name__ == "__main__":
-    print("here")
-    logging.basicConfig(filename="data/logging.log", level=logging.INFO)
+    logging.basicConfig(filename="data/logging.log", filemode="w", level=logging.INFO)
     torch.manual_seed(42)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("here")
-    action_histories = {}  # nested dict
-    for i in range(config.num_runs):
-        print("here")
-        logging.info(f"run: {i}/{config.num_runs}")
-        trainset, testset, num_classes = get_dataset(config)
-        logging.info("RANDOM")
-        action_histories["random"] = trn_random(
-            trainset=trainset,
-            testset=testset,
-            num_epochs=config.num_epochs,
-            graph_epochs=config.num_graph_epochs,
-            points=config.poison_points,
-            run_num=i,
-            num_classes=num_classes,
-        )
+    logging.info(
+        f"METHOD, DATASET, RUN_NUMBER, EPISODE, INIT_REWARD, CURRENT_ACCURACY, EPISODIC_REWARD, EPISODE_ACTIONS"
+    )
+    for ind, dataset in enumerate(config.datasets):
+        trainset, testset, num_classes = get_dataset(dataset)
+        for run_num in range(config.num_runs):
+            for method in ["random", "policy"]:
+                if method == "random":
+                    trn_random(
+                        trainset=trainset,
+                        testset=testset,
+                        num_epochs=config.num_epochs,
+                        points=config.poison_points,
+                        run_num=run_num,
+                        num_classes=num_classes,
+                        dataset=dataset,
+                    )
 
-        logging.info("RL")
-        action_histories["policy"] = trn(
-            trainset=trainset,
-            testset=testset,
-            num_epochs=config.num_epochs,
-            graph_epochs=config.num_graph_epochs,
-            points=config.poison_points,
-            run_num=i,
-            num_classes=num_classes,
-        )
-
-    with open(config.action_hist_path, "wb") as f:
-        np.save(f, action_histories)
+                if method == "policy":
+                    trn(
+                        trainset=trainset,
+                        testset=testset,
+                        num_epochs=config.num_epochs,
+                        points=config.poison_points,
+                        run_num=run_num,
+                        num_classes=num_classes,
+                        dataset=dataset,
+                    )

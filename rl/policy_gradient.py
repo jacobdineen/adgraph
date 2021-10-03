@@ -9,11 +9,11 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 from math import floor
 from rl.action_space import Actions as A
+import config
 
-
-# torch.autograd.set_detect_anomaly(False)
-# torch.autograd.profiler.profile(False)
-# torch.autograd.profiler.emit_nvtx(False)
+torch.autograd.set_detect_anomaly(False)
+torch.autograd.profiler.profile(False)
+torch.autograd.profiler.emit_nvtx(False)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -72,16 +72,20 @@ class Policy(nn.Module):
         returns = []
         for r in self.rewards[::-1]:
             # print(r)
-            R = r + 0.99 * R  # args.gamma = 0.99
+            R = r + config.gamma * R  # args.gamma = 0.99
             returns.insert(0, R)
         returns = torch.Tensor(returns).to(device)
         returns = (returns - returns.mean()) / (returns.std() + eps)
         for log_prob, R in zip(self.saved_log_probs, returns):
             policy_loss.append(-log_prob * R)
+
         for param in self.parameters():
             param.grad = None
         policy_loss = torch.cat(policy_loss).to(device).sum()
-        optimizer.zero_grad()  # zero out gradient
+
+        for param in self.parameters():
+            param.grad = None  # zero out gradient
+
         policy_loss.backward()
         optimizer.step()
         del self.rewards[:]

@@ -10,6 +10,11 @@ from copy import deepcopy
 import torch.nn as nn
 import torch.nn.functional as F
 import config
+from torch.cuda.amp.grad_scaler import GradScaler
+
+torch.autograd.set_detect_anomaly(False)
+torch.autograd.profiler.profile(False)
+torch.autograd.profiler.emit_nvtx(False)
 
 # fetch cpu, gpu if available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -116,16 +121,16 @@ def train(trainset, epochs: int, model=None):
     if model is None:
         # instantiate GNN model
         model = Classifier(
-            in_dim=config.gcn_in_dim,
-            hidden_dim=config.gcn_hidden,
-            n_classes=trainset.num_classes,
+            in_dim=1, hidden_dim=config.gcn_hidden, n_classes=trainset.num_classes
         )
+        model = model.cuda()
     # instantiate loss function
     loss_func = nn.CrossEntropyLoss()
     # instantiate optimizer
     optimizer = optim.Adam(model.parameters(), lr=config.gcn_learning_rate)
     model.train()  # train mode - learnable params
     epoch_losses = []  # logs of epoch losses
+    scaler = GradScaler()
     # Begin Batch Training
     for epoch in range(epochs):
         epoch_loss = 0
@@ -134,9 +139,11 @@ def train(trainset, epochs: int, model=None):
             loss = loss_func(
                 prediction.to(device), label.type(torch.LongTensor).to(device)
             )  # compute loss
-            optimizer.zero_grad()  # zero out gradient
-            loss.backward()  # backward pass
-            optimizer.step()  # perform weight updates
+            for param in model.parameters():
+                param.grad = None
+            scaler.scale(loss).backward()  # backward pass
+            scaler.step(optimizer)  # perform weight updates
+            scaler.update()
             epoch_loss += loss.detach().item()  # compute epoch loss
         epoch_loss /= iter + 1
         epoch_losses.append(epoch_loss)
