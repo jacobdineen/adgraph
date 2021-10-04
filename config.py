@@ -23,9 +23,9 @@ gcn_in_dim = 1
 gcn_hidden = 256
 
 # RL Params
-poison_points = 10  # attacking budget
-num_epochs = 2
-num_runs = 1
+attacking_budget = [0.01, 0.02, 0.05, 0.10]  # attacking budget
+num_epochs = 100
+num_runs = 5
 gamma = 0.99
 eps = np.finfo(np.float32).eps.item()
 rl_learning_rate = 0.01

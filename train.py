@@ -12,6 +12,7 @@ import torch.optim as optim
 import pickle
 from rl.action_space import Actions as A
 import logging
+from tqdm import tqdm
 
 # from collections import defaultdict
 # import nested_dict as nd
@@ -40,7 +41,7 @@ def trn(
     trainset,
     testset,
     num_epochs: int,
-    points: int,
+    attacking_budget: float,
     run_num: int,
     num_classes: int,
     dataset: str,
@@ -65,6 +66,7 @@ def trn(
     """
     # logging data
     # logging = open("data/logs.txt", "a")
+    points = int(len(trainset) * attacking_budget)
     pickle.dump(trainset.graphs, open("data/init_graphs.p", "wb"))
 
     # max_labels = trainset.labels
@@ -103,7 +105,7 @@ def trn(
         # perform policy updates/optimization
         policy.finish_episode(optimizer, eps)
         logging.info(
-            f"rl, {dataset}, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}, {episode_actions}"
+            f"rl, {dataset}, {attacking_budget}, {run_num},  {i_episode}, {init_reward}, {curr_acc}, {ep_reward}, {episode_actions}"
         )
 
 
@@ -111,12 +113,12 @@ def trn_random(
     trainset,
     testset,
     num_epochs: int,
-    points: int,
+    attacking_budget: float,
     run_num: int,
     num_classes: int,
     dataset: str,
 ):
-    # logging = open(config.logging_path, "a")
+    points = int(len(trainset) * attacking_budget)
     pickle.dump(trainset.graphs, open(config.data_save_path, "wb"))
 
     g_model, init_reward = runthrough(
@@ -143,7 +145,7 @@ def trn_random(
             ep_reward += reward
 
         logging.info(
-            f"rand, {dataset}, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}, {episode_actions}"
+            f"rand, {dataset}, {attacking_budget}, {run_num}, {i_episode}, {init_reward}, {curr_acc}, {ep_reward}, {episode_actions}"
         )
 
 
@@ -152,30 +154,33 @@ if __name__ == "__main__":
     torch.manual_seed(42)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logging.info(
-        f"METHOD, DATASET, RUN_NUMBER, EPISODE, INIT_REWARD, CURRENT_ACCURACY, EPISODIC_REWARD, EPISODE_ACTIONS"
+        f"METHOD, DATASET, POISON_POINTS, RUN_NUMBER, EPISODE, INIT_REWARD, CURRENT_ACCURACY, EPISODIC_REWARD, EPISODE_ACTIONS"
     )
-    for ind, dataset in enumerate(config.datasets):
-        trainset, testset, num_classes = get_dataset(dataset)
-        for run_num in range(config.num_runs):
-            for method in ["random", "policy"]:
-                if method == "random":
-                    trn_random(
-                        trainset=trainset,
-                        testset=testset,
-                        num_epochs=config.num_epochs,
-                        points=config.poison_points,
-                        run_num=run_num,
-                        num_classes=num_classes,
-                        dataset=dataset,
-                    )
+    for ind, dataset in tqdm(enumerate(config.datasets)):
+        for run_num in tqdm(range(config.num_runs), leave=False):
+            for budget in config.attacking_budget:
+                for method in ["random", "policy"]:
 
-                if method == "policy":
-                    trn(
-                        trainset=trainset,
-                        testset=testset,
-                        num_epochs=config.num_epochs,
-                        points=config.poison_points,
-                        run_num=run_num,
-                        num_classes=num_classes,
-                        dataset=dataset,
-                    )
+                    trainset, testset, num_classes = get_dataset(dataset)
+
+                    if method == "random":
+                        trn_random(
+                            trainset=trainset,
+                            testset=testset,
+                            num_epochs=config.num_epochs,
+                            attacking_budget=budget,
+                            run_num=run_num,
+                            num_classes=num_classes,
+                            dataset=dataset,
+                        )
+
+                    if method == "policy":
+                        trn(
+                            trainset=trainset,
+                            testset=testset,
+                            num_epochs=config.num_epochs,
+                            attacking_budget=budget,
+                            run_num=run_num,
+                            num_classes=num_classes,
+                            dataset=dataset,
+                        )
