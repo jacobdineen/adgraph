@@ -131,12 +131,15 @@ def graphs_to_state(G):
     Tensor
         mean node degrees for each graph in G
     """
-    mean = [torch.Tensor.float(i.in_degrees()).mean() for i in G]  # mean
-    maxi = [torch.Tensor.float(i.in_degrees()).max() for i in G]  # max
-    mini = [torch.Tensor.float(i.in_degrees()).min() for i in G]  # min
-    # assume that the state of the system can be deduced from summary stats
-    state = torch.cat((torch.Tensor(mean), torch.Tensor(maxi), torch.Tensor(mini)))
-    return state
+    try:
+        mean = [torch.Tensor.float(i.in_degrees()).mean() for i in G]  # mean
+        maxi = [torch.Tensor.float(i.in_degrees()).max() for i in G]  # max
+        mini = [torch.Tensor.float(i.in_degrees()).min() for i in G]  # min
+        # assume that the state of the system can be deduced from summary stats
+        state = torch.cat((torch.Tensor(mean), torch.Tensor(maxi), torch.Tensor(mini)))
+        return state
+    except:
+        return len(torch.zeros(len(G) * 3))
 
 
 def perform_action(trainset, action, state, num_classes):
@@ -156,17 +159,17 @@ def perform_action(trainset, action, state, num_classes):
     tensor
         s': resulting state after taking a in s
     """
-    action_size = len(A.action_space)
-    # a is the graph label index to change
-    a = floor(action / action_size)
-    # b is the class index to change to
-    b = action % action_size
+    # action is the ith action of the jth graph
 
-    # perform action on graph
-    trainset.graphs[a] = A.action_space[b](trainset.graphs[a])
-    # print(f"poisoning graph {a} with label {b}")
-    # poison existing label
+    num_actions = len(A.action_space)
+    graph_index = int(np.floor(action / num_actions))
+    action_index = int(((action / num_actions) - graph_index) * num_actions)
+    graph_class = trainset.labels[graph_index]
+
+    # perform action on gra
+    trainset.graphs[graph_index] = A.action_space[action_index](
+        trainset.graphs[graph_index]
+    )
+
     state = graphs_to_state(trainset.graphs)
-    # return updated state
-    # return updated graph
-    return state, trainset, a, b
+    return state, trainset, graph_index, action_index, graph_class.item()

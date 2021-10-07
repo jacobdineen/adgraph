@@ -23,6 +23,12 @@ def get_dataset(dataset):
     if dataset == "imdb":
         data = TUDataset("IMDB-BINARY")
         num_classes = 2
+    if dataset == "msrc":
+        data = TUDataset("MSRC_9")
+        num_classes = 8
+    if dataset == "ptc_fm":
+        data = TUDataset("ptc_fm")
+        num_classes = 2
 
     # reconcile API mismatch here
     if dataset != "minigc":

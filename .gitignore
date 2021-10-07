@@ -11,4 +11,5 @@ logs.txt
 
 images/
 .vscode/
-data/logging.log
+data/
+journal_meta/

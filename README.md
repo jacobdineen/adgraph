@@ -12,7 +12,6 @@ conda env create environment.yml
 # paths
 action_hist_path = "data/action_hist.npy"
 data_save_path = "data/init_graphs.p"
-logging_path = "data/logs.txt"
 
 
 # datasets
@@ -24,7 +23,7 @@ datasets = ["minigc", "imdb", "kki", "letter_med"]
 
 # GCN Params
 gcn_learning_rate = 0.01
-gcn_batch_size = 64
+gcn_batch_size = 124
 gcn_workers = 1
 gcn_additional_epochs = 1
 num_graph_epochs = 70

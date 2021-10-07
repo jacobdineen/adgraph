@@ -99,7 +99,7 @@ def plot_samples(dataset, data, path="images/dataset.png"):
         label_map = get_label_mapping()
         plot()
 
-    if dataset == "imdb" or dataset == "kki":
+    if dataset == "imdb" or dataset == "kki" or dataset == "ptc":
         label_map = {0: "negative", 1: "positive"}
         fig, axes = plt.subplots(1, 2, figsize=(18, 9))
         plot()

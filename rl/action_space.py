@@ -39,12 +39,11 @@ def remove_node(g):
     g : dgl graph class
     """
     g = from_dgl_to_nx(g)  # convert from dgl to nx
-    # logic from
-    if len(list(g.nodes)) > 0:
+    try:
         node = random.choice(list(g.nodes))  # randomly select node
         g.remove_node(node)  # remove random node
         return from_nx_to_dgl(g)  # convert back to DGL
-    else:
+    except:
         pass
 
 
@@ -55,10 +54,13 @@ def remove_edge(g):
     ----------
     g : dgl graph class
     """
-    g = from_dgl_to_nx(g)  # convert from dgl to nx
-    u, v, _ = random.choice(list(g.edges))
-    g.remove_edge(u, v)
-    return from_nx_to_dgl(g)  # convert back to DGL
+    try:
+        g = from_dgl_to_nx(g)  # convert from dgl to nx
+        u, v, _ = random.choice(list(g.edges))
+        g.remove_edge(u, v)
+        return from_nx_to_dgl(g)  # convert back to DGL
+    except:
+        pass
 
 
 def add_node(g):
@@ -68,10 +70,13 @@ def add_node(g):
     ----------
     g : dgl graph class
     """
-    g = from_dgl_to_nx(g)  # convert from dgl to nx
-    ind = len(g) + 1
-    g.add_node(ind)  # remove random node
-    return from_nx_to_dgl(g)  # convert back to DGL
+    try:
+        g = from_dgl_to_nx(g)  # convert from dgl to nx
+        ind = len(g) + 1
+        g.add_node(ind)  # remove random node
+        return from_nx_to_dgl(g)  # convert back to DGL
+    except:
+        pass
 
 
 def add_edge(g):
@@ -81,10 +86,13 @@ def add_edge(g):
     ----------
     g : dgl graph class
     """
-    g = from_dgl_to_nx(g)  # convert from dgl to nx
-    u, v, _ = random.choice(list(g.edges))
-    g.add_edge(u, v)
-    return from_nx_to_dgl(g)  # convert back to DGL
+    try:
+        g = from_dgl_to_nx(g)  # convert from dgl to nx
+        u, v, _ = random.choice(list(g.edges))
+        g.add_edge(u, v)
+        return from_nx_to_dgl(g)  # convert back to DGL
+    except:
+        pass
 
 
 def add_subgraph(g, num_nodes=10, p=0.75):
