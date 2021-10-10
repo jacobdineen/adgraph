@@ -95,6 +95,10 @@ def add_edge(g):
         pass
 
 
+def do_nothing(g):
+    return g
+
+
 def add_subgraph(g, num_nodes=10, p=0.75):
     """randomly add a gnp graph within the existing graph
     Parameters
@@ -110,9 +114,11 @@ def add_subgraph(g, num_nodes=10, p=0.75):
 
 class Actions:
     action_space = {
-        0: remove_edge,
-        1: remove_node,
-        2: add_edge,
-        3: add_node,
-        # 0: add_subgraph
+        # 0: remove_edge,
+        # # 1: remove_node,
+        # 1: add_edge,
+        # # 3: add_node,
+        # 2: do_nothing,
+        0: add_subgraph,
+        1: do_nothing,
     }

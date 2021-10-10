@@ -216,7 +216,8 @@ def poison_test(model, trainset, testset):
     tensor
         predictions over test set
     """
-    model2, _ = train(trainset=trainset, epochs=1, model=deepcopy(model))
-    model2.eval()
-    y = test(testset, model2)
+    retrained, _ = train(trainset=trainset, epochs=1, model=deepcopy(model))
+    retrained = retrained.cuda()
+    retrained.eval()
+    y = test(testset, retrained)
     return y

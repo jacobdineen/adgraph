@@ -36,6 +36,6 @@ def get_dataset(dataset):
         data.labels = flatten(data.graph_labels)
         data.num_classes = data.num_labels[0]
 
-    trainset, _, testset = split_dataset(data, [0.8, 0.0, 0.2])
+    trainset, _, testset = split_dataset(data, [0.8, 0.0, 0.2], shuffle=True)
 
     return trainset.dataset, testset.dataset, num_classes

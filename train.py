@@ -25,8 +25,8 @@ def set_policy(trainset, A):
     policy = Policy(
         in_dim=len(graphs_to_state(trainset.graphs)),  # num graphs
         hidden_dim=256,  # num hidden neurons
-        out_dim=len(trainset) * len(A.action_space),  # num possible actions
-        dropout=0.5,
+        out_dim=len(trainset) * 2,  # num possible actions
+        dropout=0.6,
     )
 
     optimizer = optim.Adam(policy.parameters(), lr=config.rl_learning_rate)
@@ -73,6 +73,7 @@ def trn(
             curr_acc = poison_test(model=g_model, trainset=trainset, testset=testset)
 
             reward = prev_acc - curr_acc
+
             prev_acc = curr_acc
             policy.rewards.append(reward)
             ep_reward += reward
@@ -80,7 +81,7 @@ def trn(
         # perform policy updates/optimization
         policy.finish_episode(optimizer, eps)
         logging.info(
-            f"rl; {dataset}; {attacking_budget}; {run_num};  {i_episode}; {init_reward}; {curr_acc}; {ep_reward}; {graph_classes};  {episode_actions}"
+            f"rl; {dataset}; {attacking_budget}; {run_num};  {i_episode}; {init_reward:.4f}; {curr_acc:.4f}; {ep_reward:.4f}; {graph_classes};  {episode_actions}"
         )
 
 
@@ -99,6 +100,7 @@ def trn_random(
     pickle.dump(trainset.graphs, open(config.data_save_path, "wb"))
 
     for i_episode in range(num_epochs):
+        # reload init graphs
         trainset.graphs = pickle.load(open(config.data_save_path, "rb"))
         state, ep_reward, _ = graphs_to_state(trainset.graphs), 0, 0
         prev_acc = init_reward
@@ -107,48 +109,52 @@ def trn_random(
         graph_classes = []
         for t in range(points):  # Assume 18 Poisoning points
             action = np.random.choice(len(trainset) * len(A.action_space))
-            state, trainset, graph, action, graph_class = perform_action(
-                trainset, action, state, num_classes
-            )
+            try:
+                state, trainset, graph, action, graph_class = perform_action(
+                    trainset, action, state, num_classes
+                )
 
-            episode_actions.append(action)
-            graph_classes.append(graph_class)
+                episode_actions.append(action)
+                graph_classes.append(graph_class)
 
-            curr_acc = poison_test(model=g_model, trainset=trainset, testset=testset)
+                curr_acc = poison_test(
+                    model=g_model, trainset=trainset, testset=testset
+                )
 
-            reward = prev_acc - curr_acc
-            prev_acc = curr_acc
-            ep_reward += reward
+                reward = prev_acc - curr_acc
+                prev_acc = curr_acc
+                ep_reward += reward
+            except:
+                pass
 
         logging.info(
-            f"rand, {dataset}; {attacking_budget}; {run_num}; {i_episode}; {init_reward}; {curr_acc}; {ep_reward}; {graph_classes}; {episode_actions}"
+            f"rand; {dataset}; {attacking_budget}; {run_num}; {i_episode}; {init_reward:.4f}; {curr_acc:.4f}; {ep_reward:.4f}; {graph_classes}; {episode_actions}"
         )
 
 
 if __name__ == "__main__":
-    logging.basicConfig(filename="data/logging.log", level=logging.INFO)
+    logging.basicConfig(filename="data/data.log", level=logging.INFO)
     torch.manual_seed(42)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logging.info(
         f"METHOD; DATASET; POISON_POINTS; RUN_NUMBER; EPISODE; INIT_REWARD; CURRENT_ACCURACY; EPISODIC_REWARD; GRAPH_CLASSES_PERTURBED; EPISODE_ACTIONS"
     )
     for ind, dataset in enumerate(config.datasets):
+        trainset, testset, num_classes = get_dataset(dataset)
+
+        g_model, init_reward = runthrough(
+            trainset=trainset,
+            testset=testset,
+            epochs=config.num_graph_epochs,
+        )
         for run_num in range(config.num_runs):
             for budget in config.attacking_budget:
-                for method in ["policy"]:
+                for method in ["policy", "random"]:
                     print(
                         f"Dataset: {dataset} | Run: {run_num} | Budget: {budget} | Method: {method}"
                     )
 
-                    trainset, testset, num_classes = get_dataset(dataset)
-
-                    g_model, init_reward = runthrough(
-                        trainset=trainset,
-                        testset=testset,
-                        epochs=config.num_graph_epochs,
-                    )
-
-                    if method == "random":
+                    if method == "random" and run_num < 1:
                         trn_random(
                             g_model=g_model,
                             init_reward=init_reward,

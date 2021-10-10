@@ -40,7 +40,9 @@ class Policy(nn.Module):
         super(Policy, self).__init__()
         self.affine1 = nn.Linear(in_dim, hidden_dim)  # 480
         self.dropout = nn.Dropout(p=dropout)
-        self.affine2 = nn.Linear(hidden_dim, out_dim)
+        # self.affine2 = nn.Linear(hidden_dim, hidden_dim)
+        # self.affine3 = nn.Linear(hidden_dim, hidden_dim)
+        self.affine4 = nn.Linear(hidden_dim, out_dim)
 
         self.saved_log_probs = []
         self.rewards = []
@@ -63,7 +65,13 @@ class Policy(nn.Module):
         x = self.affine1(x)
         x = self.dropout(x)
         x = F.relu(x)
-        action_scores = self.affine2(x)
+        # x = self.affine2(x)
+        # x = self.dropout(x)
+        # x = F.relu(x)
+        # x = self.affine3(x)
+        # x = self.dropout(x)
+        # x = F.relu(x)
+        action_scores = self.affine4(x)
         return F.softmax(action_scores, dim=0)
 
     def finish_episode(self, optimizer, eps):
@@ -79,13 +87,8 @@ class Policy(nn.Module):
         for log_prob, R in zip(self.saved_log_probs, returns):
             policy_loss.append(-log_prob * R)
 
-        for param in self.parameters():
-            param.grad = None
+        optimizer.zero_grad()
         policy_loss = torch.cat(policy_loss).to(device).sum()
-
-        for param in self.parameters():
-            param.grad = None  # zero out gradient
-
         policy_loss.backward()
         optimizer.step()
         del self.rewards[:]
@@ -131,15 +134,10 @@ def graphs_to_state(G):
     Tensor
         mean node degrees for each graph in G
     """
-    try:
-        mean = [torch.Tensor.float(i.in_degrees()).mean() for i in G]  # mean
-        maxi = [torch.Tensor.float(i.in_degrees()).max() for i in G]  # max
-        mini = [torch.Tensor.float(i.in_degrees()).min() for i in G]  # min
-        # assume that the state of the system can be deduced from summary stats
-        state = torch.cat((torch.Tensor(mean), torch.Tensor(maxi), torch.Tensor(mini)))
-        return state
-    except:
-        return len(torch.zeros(len(G) * 3))
+    mean_in = [torch.Tensor.float(i.in_degrees()).mean() for i in G]  # mean
+    mean_out = [torch.Tensor.float(i.out_degrees()).mean() for i in G]  # mean
+    mean = mean_in + mean_out
+    return torch.stack((mean))
 
 
 def perform_action(trainset, action, state, num_classes):
@@ -160,11 +158,11 @@ def perform_action(trainset, action, state, num_classes):
         s': resulting state after taking a in s
     """
     # action is the ith action of the jth graph
-
-    num_actions = len(A.action_space)
+    num_actions = 2
     graph_index = int(np.floor(action / num_actions))
-    action_index = int(((action / num_actions) - graph_index) * num_actions)
     graph_class = trainset.labels[graph_index]
+
+    action_index = int(((action / num_actions) - graph_index) * num_actions)
 
     # perform action on gra
     trainset.graphs[graph_index] = A.action_space[action_index](
